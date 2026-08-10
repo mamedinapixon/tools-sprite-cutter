@@ -1,0 +1,475 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Sprite Cutter</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #1e1f22;
+    --panel: #2a2b2e;
+    --border: #3f4044;
+    --text: #e8e8e8;
+    --muted: #9a9a9a;
+    --accent: #5b9dff;
+    --danger: #ff6b6b;
+    --ok: #6bcf7f;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 16px; margin: 0; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+  .layout {
+    display: grid;
+    grid-template-columns: 300px 1fr 320px;
+    gap: 1px;
+    background: var(--border);
+    min-height: calc(100vh - 60px);
+  }
+  .panel { background: var(--panel); padding: 16px; overflow-y: auto; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; }
+  button {
+    background: #3a3b3f;
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px 12px;
+    cursor: pointer;
+    font-size: 13px;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  button:hover { background: #45464a; }
+  button:disabled { opacity: .4; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #0a0a0a; font-weight: 600; }
+  button.primary:hover { background: #74acff; }
+  .folder-label { font-size: 12px; color: var(--muted); word-break: break-all; margin-bottom: 12px; }
+  .file-list { list-style: none; margin: 0; padding: 0; }
+  .file-list li {
+    padding: 6px 8px;
+    border-radius: 5px;
+    font-size: 13px;
+    cursor: pointer;
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .file-list li:hover { background: #35363a; }
+  .file-list li.active { background: var(--accent); color: #0a0a0a; }
+  .file-list li .dim { color: var(--muted); font-size: 11px; }
+  .file-list li.active .dim { color: #1a1a1a; }
+  .crop-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  .field label { font-size: 12px; color: var(--muted); }
+  .field input {
+    background: #1c1d1f;
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-size: 13px;
+  }
+  .result-dims {
+    background: #1c1d1f;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 10px;
+    font-size: 13px;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+  .result-dims.bad { border-color: var(--danger); color: var(--danger); }
+  .preview-area {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+  }
+  .preview-box {
+    text-align: center;
+  }
+  .preview-box canvas {
+    background:
+      linear-gradient(45deg, #444 25%, transparent 25%),
+      linear-gradient(-45deg, #444 25%, transparent 25%),
+      linear-gradient(45deg, transparent 75%, #444 75%),
+      linear-gradient(-45deg, transparent 75%, #444 75%);
+    background-size: 12px 12px;
+    background-position: 0 0, 0 6px, 6px -6px, -6px 0;
+    border: 1px solid var(--border);
+    image-rendering: pixelated;
+  }
+  .preview-box .caption { color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .empty-hint { color: var(--muted); font-size: 13px; text-align: center; padding: 40px; }
+  .log {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    background: #1c1d1f;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    height: 220px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .log .ok { color: var(--ok); }
+  .log .err { color: var(--danger); }
+  .log .info { color: var(--muted); }
+  .warn-banner {
+    display: none;
+    background: #4a2f00;
+    border: 1px solid #8a5a00;
+    color: #ffcc80;
+    padding: 10px 20px;
+    font-size: 13px;
+  }
+</style>
+</head>
+<body>
+
+<div class="warn-banner" id="apiWarning">
+  Tu navegador no soporta la File System Access API (showDirectoryPicker). Abrí este archivo con Chrome o Edge, idealmente sirviéndolo con <code>python3 -m http.server</code> en vez de abrirlo directo con doble clic.
+</div>
+
+<header>
+  <h1>Sprite Cutter</h1>
+  <p>Elegí carpeta origen y destino, ajustá el recorte por lado y aplicalo a una o todas las imágenes. Los originales nunca se modifican.</p>
+</header>
+
+<div class="layout">
+
+  <div class="panel">
+    <h2>Carpetas</h2>
+    <button id="btnSrc">Elegir carpeta origen</button>
+    <div class="folder-label" id="srcLabel">Sin elegir</div>
+    <button id="btnDst">Elegir carpeta destino</button>
+    <div class="folder-label" id="dstLabel">Sin elegir</div>
+
+    <h2>Imágenes (<span id="fileCount">0</span>)</h2>
+    <ul class="file-list" id="fileList"></ul>
+  </div>
+
+  <div class="panel preview-area" id="previewArea">
+    <div class="empty-hint">Elegí una carpeta de origen y seleccioná una imagen para empezar.</div>
+  </div>
+
+  <div class="panel">
+    <h2>Recorte (px por lado)</h2>
+    <div class="crop-grid">
+      <div class="field">
+        <label for="cropTop">Arriba</label>
+        <input type="number" id="cropTop" min="0" value="0">
+      </div>
+      <div class="field">
+        <label for="cropBottom">Abajo</label>
+        <input type="number" id="cropBottom" min="0" value="0">
+      </div>
+      <div class="field">
+        <label for="cropLeft">Izquierda</label>
+        <input type="number" id="cropLeft" min="0" value="0">
+      </div>
+      <div class="field">
+        <label for="cropRight">Derecha</label>
+        <input type="number" id="cropRight" min="0" value="0">
+      </div>
+    </div>
+    <div class="result-dims" id="resultDims">—</div>
+
+    <button class="primary" id="btnCutOne" disabled>Cortar imagen actual</button>
+    <button class="primary" id="btnCutAll" disabled>Cortar todas las imágenes</button>
+
+    <h2 style="margin-top:20px;">Registro</h2>
+    <div class="log" id="log"></div>
+  </div>
+
+</div>
+
+<script>
+const IMG_EXT = /\.(png|jpe?g|webp|bmp)$/i;
+
+const state = {
+  srcHandle: null,
+  dstHandle: null,
+  files: [],        // [{name, handle}]
+  currentName: null,
+  currentBitmap: null,
+};
+
+const el = {
+  btnSrc: document.getElementById('btnSrc'),
+  btnDst: document.getElementById('btnDst'),
+  srcLabel: document.getElementById('srcLabel'),
+  dstLabel: document.getElementById('dstLabel'),
+  fileList: document.getElementById('fileList'),
+  fileCount: document.getElementById('fileCount'),
+  previewArea: document.getElementById('previewArea'),
+  cropTop: document.getElementById('cropTop'),
+  cropBottom: document.getElementById('cropBottom'),
+  cropLeft: document.getElementById('cropLeft'),
+  cropRight: document.getElementById('cropRight'),
+  resultDims: document.getElementById('resultDims'),
+  btnCutOne: document.getElementById('btnCutOne'),
+  btnCutAll: document.getElementById('btnCutAll'),
+  log: document.getElementById('log'),
+  apiWarning: document.getElementById('apiWarning'),
+};
+
+if (!window.showDirectoryPicker) {
+  el.apiWarning.style.display = 'block';
+}
+
+function log(msg, cls) {
+  const line = document.createElement('div');
+  if (cls) line.className = cls;
+  line.textContent = msg;
+  el.log.appendChild(line);
+  el.log.scrollTop = el.log.scrollHeight;
+}
+
+function cropValues() {
+  return {
+    top: Math.max(0, parseInt(el.cropTop.value, 10) || 0),
+    bottom: Math.max(0, parseInt(el.cropBottom.value, 10) || 0),
+    left: Math.max(0, parseInt(el.cropLeft.value, 10) || 0),
+    right: Math.max(0, parseInt(el.cropRight.value, 10) || 0),
+  };
+}
+
+function updateButtons() {
+  el.btnCutOne.disabled = !(state.currentBitmap && state.dstHandle);
+  el.btnCutAll.disabled = !(state.files.length && state.dstHandle);
+}
+
+async function pickSource() {
+  try {
+    const handle = await window.showDirectoryPicker({ id: 'sprite-cutter-src', mode: 'read' });
+    state.srcHandle = handle;
+    el.srcLabel.textContent = handle.name;
+    await refreshFileList();
+  } catch (e) {
+    if (e.name !== 'AbortError') log('Error al elegir carpeta origen: ' + e.message, 'err');
+  }
+}
+
+async function pickDest() {
+  try {
+    const handle = await window.showDirectoryPicker({ id: 'sprite-cutter-dst', mode: 'readwrite' });
+    state.dstHandle = handle;
+    el.dstLabel.textContent = handle.name;
+    updateButtons();
+  } catch (e) {
+    if (e.name !== 'AbortError') log('Error al elegir carpeta destino: ' + e.message, 'err');
+  }
+}
+
+async function refreshFileList() {
+  state.files = [];
+  el.fileList.innerHTML = '';
+  if (!state.srcHandle) return;
+
+  for await (const [name, handle] of state.srcHandle.entries()) {
+    if (handle.kind === 'file' && IMG_EXT.test(name)) {
+      state.files.push({ name, handle });
+    }
+  }
+  state.files.sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+
+  for (const f of state.files) {
+    const li = document.createElement('li');
+    li.textContent = f.name;
+    li.dataset.name = f.name;
+    li.addEventListener('click', () => selectFile(f.name));
+    el.fileList.appendChild(li);
+  }
+  el.fileCount.textContent = state.files.length;
+  updateButtons();
+
+  if (state.files.length) {
+    selectFile(state.files[0].name);
+  } else {
+    state.currentName = null;
+    state.currentBitmap = null;
+    el.previewArea.innerHTML = '<div class="empty-hint">No se encontraron imágenes en esta carpeta.</div>';
+  }
+}
+
+async function selectFile(name) {
+  const entry = state.files.find(f => f.name === name);
+  if (!entry) return;
+  state.currentName = name;
+
+  [...el.fileList.children].forEach(li => {
+    li.classList.toggle('active', li.dataset.name === name);
+  });
+
+  const file = await entry.handle.getFile();
+  const bitmap = await createImageBitmap(file);
+  state.currentBitmap = bitmap;
+
+  buildPreviewDom();
+  renderPreview();
+  updateButtons();
+}
+
+function buildPreviewDom() {
+  el.previewArea.innerHTML = `
+    <div class="preview-box">
+      <canvas id="origCanvas"></canvas>
+      <div class="caption" id="origCaption"></div>
+    </div>
+    <div class="preview-box">
+      <canvas id="resultCanvas"></canvas>
+      <div class="caption" id="resultCaption"></div>
+    </div>
+  `;
+}
+
+function renderPreview() {
+  const bitmap = state.currentBitmap;
+  if (!bitmap) return;
+
+  const { top, bottom, left, right } = cropValues();
+  const w = bitmap.width, h = bitmap.height;
+  const resultW = w - left - right;
+  const resultH = h - top - bottom;
+
+  const valid = resultW > 0 && resultH > 0;
+  el.resultDims.textContent = valid
+    ? `${w}x${h} → ${resultW}x${resultH}`
+    : `${w}x${h} → recorte inválido (${resultW}x${resultH})`;
+  el.resultDims.classList.toggle('bad', !valid);
+
+  const scale = Math.max(1, Math.floor(240 / Math.max(w, h)));
+
+  const origCanvas = document.getElementById('origCanvas');
+  origCanvas.width = w * scale;
+  origCanvas.height = h * scale;
+  const octx = origCanvas.getContext('2d');
+  octx.imageSmoothingEnabled = false;
+  octx.drawImage(bitmap, 0, 0, w * scale, h * scale);
+
+  octx.fillStyle = 'rgba(0,0,0,0.6)';
+  if (top > 0) octx.fillRect(0, 0, w * scale, top * scale);
+  if (bottom > 0) octx.fillRect(0, (h - bottom) * scale, w * scale, bottom * scale);
+  if (left > 0) octx.fillRect(0, 0, left * scale, h * scale);
+  if (right > 0) octx.fillRect((w - right) * scale, 0, right * scale, h * scale);
+
+  if (valid) {
+    octx.strokeStyle = '#5b9dff';
+    octx.lineWidth = 2;
+    octx.strokeRect(left * scale + 1, top * scale + 1, resultW * scale - 2, resultH * scale - 2);
+  }
+
+  document.getElementById('origCaption').textContent = `Original ${w}x${h} (x${scale})`;
+
+  const resultCanvas = document.getElementById('resultCanvas');
+  const resultCaption = document.getElementById('resultCaption');
+  if (valid) {
+    const rscale = Math.max(1, Math.floor(240 / Math.max(resultW, resultH)));
+    resultCanvas.width = resultW * rscale;
+    resultCanvas.height = resultH * rscale;
+    const rctx = resultCanvas.getContext('2d');
+    rctx.imageSmoothingEnabled = false;
+    rctx.drawImage(
+      bitmap,
+      left, top, resultW, resultH,
+      0, 0, resultW * rscale, resultH * rscale
+    );
+    resultCaption.textContent = `Resultado ${resultW}x${resultH} (x${rscale})`;
+  } else {
+    resultCanvas.width = 1;
+    resultCanvas.height = 1;
+    resultCaption.textContent = 'Ajustá los valores de recorte';
+  }
+}
+
+function cropBitmapToBlob(bitmap, top, bottom, left, right) {
+  const w = bitmap.width, h = bitmap.height;
+  const resultW = w - left - right;
+  const resultH = h - top - bottom;
+  if (resultW <= 0 || resultH <= 0) return null;
+
+  const canvas = document.createElement('canvas');
+  canvas.width = resultW;
+  canvas.height = resultH;
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(bitmap, left, top, resultW, resultH, 0, 0, resultW, resultH);
+  return new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+}
+
+async function writeToDest(name, blob) {
+  const fileHandle = await state.dstHandle.getFileHandle(name, { create: true });
+  const writable = await fileHandle.createWritable();
+  await writable.write(blob);
+  await writable.close();
+}
+
+async function cutOne() {
+  if (!state.currentBitmap || !state.dstHandle) return;
+  const { top, bottom, left, right } = cropValues();
+  const blob = await cropBitmapToBlob(state.currentBitmap, top, bottom, left, right);
+  if (!blob) {
+    log(`✗ ${state.currentName}: recorte inválido, se omitió.`, 'err');
+    return;
+  }
+  try {
+    await writeToDest(state.currentName, blob);
+    log(`✓ ${state.currentName} guardado en destino.`, 'ok');
+  } catch (e) {
+    log(`✗ ${state.currentName}: ${e.message}`, 'err');
+  }
+}
+
+async function cutAll() {
+  if (!state.files.length || !state.dstHandle) return;
+  const { top, bottom, left, right } = cropValues();
+  log(`Procesando ${state.files.length} imágenes (arriba:${top} abajo:${bottom} izq:${left} der:${right})...`, 'info');
+
+  let okCount = 0, errCount = 0;
+  for (const f of state.files) {
+    try {
+      const file = await f.handle.getFile();
+      const bitmap = await createImageBitmap(file);
+      const blob = await cropBitmapToBlob(bitmap, top, bottom, left, right);
+      if (!blob) {
+        log(`✗ ${f.name}: resultado ${bitmap.width - left - right}x${bitmap.height - top - bottom} inválido, omitido.`, 'err');
+        errCount++;
+        continue;
+      }
+      await writeToDest(f.name, blob);
+      log(`✓ ${f.name}`, 'ok');
+      okCount++;
+    } catch (e) {
+      log(`✗ ${f.name}: ${e.message}`, 'err');
+      errCount++;
+    }
+  }
+  log(`Listo. ${okCount} guardadas, ${errCount} con error.`, 'info');
+}
+
+el.btnSrc.addEventListener('click', pickSource);
+el.btnDst.addEventListener('click', pickDest);
+el.btnCutOne.addEventListener('click', cutOne);
+el.btnCutAll.addEventListener('click', cutAll);
+[el.cropTop, el.cropBottom, el.cropLeft, el.cropRight].forEach(input => {
+  input.addEventListener('input', renderPreview);
+});
+</script>
+
+</body>
+</html>
